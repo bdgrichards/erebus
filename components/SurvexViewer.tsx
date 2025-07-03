@@ -51,8 +51,9 @@ export default function SurvexViewer({ data, style }: SurvexViewerProps) {
   
   // Use refs for camera values - keep upright view
   const cameraRotationRef = useRef({ theta: 0, phi: Math.PI / 2 }); // phi = 90 degrees for side view
-  const cameraDistanceRef = useRef(1000); // Start further back
+  const cameraDistanceRef = useRef(100); // Will be dynamically set based on cave size
   const cameraTargetRef = useRef({ x: 0, y: 0, z: 0 });
+  const caveSizeRef = useRef({ min: 10, max: 500 }); // Dynamic zoom bounds
 
   // Pan responder like demo tab (known to work)
   const panResponder = PanResponder.create({
@@ -127,7 +128,9 @@ export default function SurvexViewer({ data, style }: SurvexViewerProps) {
             // Apply logarithmic scaling for smoother zoom
             const zoomSensitivity = 0.8;
             const scaledZoom = Math.pow(zoomFactor, zoomSensitivity);
-            const newDistance = Math.max(100, Math.min(5000, currentCameraDistance / scaledZoom));
+            // Use dynamic zoom bounds based on cave size
+            const bounds = caveSizeRef.current;
+            const newDistance = Math.max(bounds.min, Math.min(bounds.max, currentCameraDistance / scaledZoom));
             
             cameraDistanceRef.current = newDistance;
             console.log('3D Viewer: Zoom:', zoomFactor.toFixed(2), 'Distance:', newDistance.toFixed(0));
@@ -312,8 +315,8 @@ export default function SurvexViewer({ data, style }: SurvexViewerProps) {
     const camera = new THREE.PerspectiveCamera(
       75,
       width / height,
-      0.1,
-      1000
+      1, // Increased near plane for better precision
+      10000 // Increased far plane to handle max zoom distance
     );
     
     const renderer = new Renderer({ gl });
@@ -331,8 +334,49 @@ export default function SurvexViewer({ data, style }: SurvexViewerProps) {
     try {
       console.log('3D Viewer: Creating geometry with bounds:', survexData.bounds);
       
-      // Scale coordinates to reasonable size - the coordinates appear to be in very large units
-      const scale = 1 / 1000000; // Scale down by 1 million
+      // Calculate the maximum dimension of the cave to auto-scale appropriately
+      const rawDimensions = {
+        width: survexData.bounds.maxX - survexData.bounds.minX,
+        height: survexData.bounds.maxY - survexData.bounds.minY,
+        depth: survexData.bounds.maxZ - survexData.bounds.minZ
+      };
+      const maxDimension = Math.max(rawDimensions.width, rawDimensions.height, rawDimensions.depth);
+      
+      // Validate max dimension and use fallback if invalid
+      let scale;
+      if (maxDimension <= 0 || !isFinite(maxDimension)) {
+        console.warn('3D Viewer: Invalid cave dimensions, using fallback scaling');
+        scale = 1; // Fallback scale
+      } else {
+        // Scale so the largest dimension is about 50 units (good for camera distance 100)
+        const targetSize = 50;
+        scale = targetSize / maxDimension;
+      }
+      
+      console.log('3D Viewer: Raw dimensions:', rawDimensions);
+      console.log('3D Viewer: Max dimension:', maxDimension, 'Scale factor:', scale.toExponential(2));
+      
+      // Calculate final scaled bounds
+      const scaledBounds = {
+        minX: survexData.bounds.minX * scale,
+        maxX: survexData.bounds.maxX * scale,
+        minY: survexData.bounds.minY * scale,
+        maxY: survexData.bounds.maxY * scale,
+        minZ: survexData.bounds.minZ * scale,
+        maxZ: survexData.bounds.maxZ * scale
+      };
+      const scaledDimensions = {
+        width: scaledBounds.maxX - scaledBounds.minX,
+        height: scaledBounds.maxY - scaledBounds.minY,
+        depth: scaledBounds.maxZ - scaledBounds.minZ
+      };
+      
+      // Calculate max scaled dimension for later use
+      const maxScaledDimension = Math.max(scaledDimensions.width, scaledDimensions.height, scaledDimensions.depth);
+      
+      console.log('3D Viewer: Scaled bounds:', scaledBounds);
+      console.log('3D Viewer: Scaled dimensions:', scaledDimensions);
+      console.log('3D Viewer: Max scaled dimension:', maxScaledDimension.toFixed(3));
       
       // Create material for cave lines
       const lineMaterial = new THREE.LineBasicMaterial({
@@ -340,14 +384,24 @@ export default function SurvexViewer({ data, style }: SurvexViewerProps) {
         linewidth: 2,
       });
       
-      // Create geometry for cave survey lines (limit to first 20 legs for performance)
+      // Create geometry for cave survey lines (show all legs)
       const points: THREE.Vector3[] = [];
-      const maxLegs = Math.min(20, survexData.legs.length);
+      const maxLegs = survexData.legs.length; // Show all legs, no limit
       
       for (let i = 0; i < maxLegs; i++) {
         const leg = survexData.legs[i];
-        points.push(new THREE.Vector3(leg.fromX * scale, leg.fromY * scale, leg.fromZ * scale));
-        points.push(new THREE.Vector3(leg.toX * scale, leg.toY * scale, leg.toZ * scale));
+        const fromPoint = new THREE.Vector3(leg.fromX * scale, leg.fromY * scale, leg.fromZ * scale);
+        const toPoint = new THREE.Vector3(leg.toX * scale, leg.toY * scale, leg.toZ * scale);
+        points.push(fromPoint);
+        points.push(toPoint);
+        
+        // Debug: Log first few points to understand scale
+        if (i < 3) {
+          console.log(`3D Viewer: Leg ${i}:`, {
+            raw: { fromX: leg.fromX, fromY: leg.fromY, fromZ: leg.fromZ, toX: leg.toX, toY: leg.toY, toZ: leg.toZ },
+            scaled: { from: fromPoint, to: toPoint }
+          });
+        }
       }
       
       if (points.length > 0) {
@@ -357,10 +411,22 @@ export default function SurvexViewer({ data, style }: SurvexViewerProps) {
         console.log('3D Viewer: Added', points.length / 2, 'line segments');
       }
       
-      // Create station markers (limit to first 5 for performance)
-      const stationGeometry = new THREE.SphereGeometry(5, 8, 8);
+      // Create station markers (show all stations)
+      // Size proportional to cave scale (1% of max dimension)
+      let stationSize = maxScaledDimension * 0.01;
+      
+      // Validate station size and use fallback if invalid
+      if (isNaN(stationSize) || !isFinite(stationSize) || stationSize <= 0) {
+        console.warn('3D Viewer: Invalid station size calculated, using fallback. maxScaledDimension:', maxScaledDimension || 'undefined');
+        stationSize = 0.5; // Fallback size
+      } else {
+        stationSize = Math.max(0.1, stationSize); // Ensure minimum size
+      }
+      
+      const stationGeometry = new THREE.SphereGeometry(stationSize, 8, 8);
+      console.log('3D Viewer: Station marker size:', stationSize.toFixed(3), 'maxScaledDimension:', (maxScaledDimension || 0).toFixed(3));
       const stationMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-      const maxStations = Math.min(5, survexData.stations.length);
+      const maxStations = survexData.stations.length; // Show all stations, no limit
       
       for (let i = 0; i < maxStations; i++) {
         const station = survexData.stations[i];
@@ -369,34 +435,30 @@ export default function SurvexViewer({ data, style }: SurvexViewerProps) {
         scene.add(stationMesh);
       }
       
-      console.log('3D Viewer: Added', survexData.stations.length, 'stations');
+      console.log('3D Viewer: Added', maxStations, 'stations out of', survexData.stations.length, 'total');
       
-      // Center camera on the cave (with scaled coordinates) - inside try block
-      const bounds = survexData.bounds;
-      const centerX = (bounds.minX + bounds.maxX) / 2 * scale;
-      const centerY = (bounds.minY + bounds.maxY) / 2 * scale;
-      const centerZ = (bounds.minZ + bounds.maxZ) / 2 * scale;
+      // Center camera on the actual cave center
+      const centerX = (scaledBounds.minX + scaledBounds.maxX) / 2;
+      const centerY = (scaledBounds.minY + scaledBounds.maxY) / 2;
+      const centerZ = (scaledBounds.minZ + scaledBounds.maxZ) / 2;
       
-      setCameraTarget({ x: centerX, y: centerY, z: centerZ });
-      
-      // Position camera to view the entire cave
-      const maxDimension = Math.max(
-        (bounds.maxX - bounds.minX) * scale,
-        (bounds.maxY - bounds.minY) * scale,
-        (bounds.maxZ - bounds.minZ) * scale
-      );
-      const distance = maxDimension * 2;
-      
-      // Set initial camera distance and target - use more reasonable values
-      const initialDistance = 1000; // Fixed distance for better control
-      cameraDistanceRef.current = initialDistance;
-      
-      // Start at origin for simplicity
-      const target = { x: 0, y: 0, z: 0 };
+      const target = { x: centerX, y: centerY, z: centerZ };
       setCameraTarget(target);
       cameraTargetRef.current = target;
       
-      console.log('3D Viewer: Camera positioned at distance:', initialDistance, 'from origin');
+      // Set camera distance to show the entire cave nicely
+      // Use the largest scaled dimension to determine good viewing distance
+      const initialDistance = maxScaledDimension * 2; // 2x the size for good overview
+      cameraDistanceRef.current = initialDistance;
+      
+      // Set dynamic zoom bounds based on cave size
+      const minZoom = maxScaledDimension * 0.5; // Can get quite close
+      const maxZoom = maxScaledDimension * 5;   // Can zoom out to 5x the cave size
+      caveSizeRef.current = { min: minZoom, max: maxZoom };
+      
+      console.log('3D Viewer: Cave center:', target);
+      console.log('3D Viewer: Initial camera distance:', initialDistance.toFixed(1), 'for max dimension:', maxScaledDimension.toFixed(1));
+      console.log('3D Viewer: Zoom bounds:', { min: minZoom.toFixed(1), max: maxZoom.toFixed(1) });
     } catch (error) {
       console.error('3D Viewer: Error creating geometry:', error);
     }
@@ -430,6 +492,16 @@ export default function SurvexViewer({ data, style }: SurvexViewerProps) {
       
       camera.position.set(x, y, z);
       camera.lookAt(target.x, target.y, target.z);
+      
+      // Debug: Log camera info occasionally (every 60 frames = ~1 second)
+      if (Math.random() < 0.016) { // ~1/60 chance each frame
+        console.log('3D Viewer: Camera -', {
+          position: { x: x.toFixed(1), y: y.toFixed(1), z: z.toFixed(1) },
+          target: { x: target.x.toFixed(1), y: target.y.toFixed(1), z: target.z.toFixed(1) },
+          distance: distance.toFixed(1),
+          rotation: { theta: rotation.theta.toFixed(2), phi: rotation.phi.toFixed(2) }
+        });
+      }
       
       renderer.render(scene, camera);
       gl.endFrameEXP();
