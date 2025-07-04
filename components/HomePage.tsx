@@ -25,15 +25,24 @@ export default function HomePage({ onOpenFile, onOpenSettings, onOpenRecentFile,
     header: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      alignItems: 'center',
+      alignItems: 'flex-start',
       paddingHorizontal: 20,
       paddingVertical: 16,
       paddingTop: 60,
+    },
+    headerContainer: {
+      flex: 1,
+      justifyContent: 'flex-start',
+      alignItems: 'flex-start',
     },
     title: {
       fontSize: 28,
       fontWeight: 'bold',
       color: colors.text,
+    },
+    subtitle: {
+      fontSize: 16,
+      color: colors.text + '80',
     },
     settingsButton: {
       padding: 8,
@@ -144,7 +153,10 @@ export default function HomePage({ onOpenFile, onOpenSettings, onOpenRecentFile,
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Erebus</Text>
+        <View style={styles.headerContainer}>
+          <Text style={styles.title}>Erebus</Text>
+          <Text style={styles.subtitle}>Survex .3d Viewer</Text>
+        </View>
         <TouchableOpacity style={styles.settingsButton} onPress={onOpenSettings} disabled={isLoading}>
           <Ionicons name="settings-outline" size={24} color={colors.text} />
         </TouchableOpacity>
