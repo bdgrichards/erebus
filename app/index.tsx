@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { router } from 'expo-router';
 import { Alert } from 'react-native';
 import HomePage from '@/components/HomePage';
@@ -8,12 +8,12 @@ import { FileLoaderService } from '@/lib/file-loader';
 export default function Index() {
   const [recentFiles, setRecentFiles] = useState<RecentFile[]>([]);
 
-  const loadRecentFiles = async () => {
+  const loadRecentFiles = useCallback(async () => {
     const files = await StorageService.getRecentFiles();
     setRecentFiles(files);
-  };
+  }, []);
 
-  const addTestRecentFile = async () => {
+  const addTestRecentFile = useCallback(async () => {
     // Add a test file if none exist
     const existing = await StorageService.getRecentFiles();
     if (existing.length === 0) {
@@ -23,7 +23,7 @@ export default function Index() {
       });
       await loadRecentFiles();
     }
-  };
+  }, [loadRecentFiles]);
 
   useEffect(() => {
     const initializeData = async () => {
@@ -32,7 +32,7 @@ export default function Index() {
     };
     
     initializeData();
-  }, []);
+  }, [addTestRecentFile, loadRecentFiles]);
 
   const handleOpenFile = async () => {
     try {

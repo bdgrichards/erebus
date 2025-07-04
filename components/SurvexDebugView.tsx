@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from './ThemedText';
@@ -26,9 +26,9 @@ export default function SurvexDebugView() {
       const timestamp = new Date().toISOString();
       const logEntry = `[${timestamp}] ${message}\n`;
       const logPath = `${FileSystem.cacheDirectory}survex-debug.log`;
-      await FileSystem.writeAsStringAsync(logPath, logEntry, { append: true });
+      await FileSystem.writeAsStringAsync(logPath, logEntry, { encoding: FileSystem.EncodingType.UTF8 });
       // Don't log success to avoid spam
-    } catch (error) {
+    } catch {
       // Silent fail to avoid log spam - just use console
       // console.error('Failed to write log:', error);
     }
@@ -73,7 +73,7 @@ export default function SurvexDebugView() {
       setIsLoading(true);
       setError(null);
 
-      let uint8Array: Uint8Array;
+      let uint8Array: Uint8Array = new Uint8Array([]);
       let fileLoaded = false;
       
       // If a file URI is provided, try to read it
@@ -96,7 +96,8 @@ export default function SurvexDebugView() {
           fileLoaded = true;
           
         } catch (fileError) {
-          await addDebugLog(`📁 File read failed: ${fileError.message}`);
+          const errorMessage = fileError instanceof Error ? fileError.message : String(fileError);
+          await addDebugLog(`📁 File read failed: ${errorMessage}`);
         }
       }
       
@@ -207,9 +208,6 @@ export default function SurvexDebugView() {
     return result;
   };
 
-  const formatBytes = (bytes: number) => {
-    return bytes.toString(16).padStart(2, '0');
-  };
 
   const renderHeader = (header: any) => (
     <ThemedView style={styles.section}>
@@ -217,7 +215,7 @@ export default function SurvexDebugView() {
       <ThemedText style={styles.item}>File ID: {header.fileId}</ThemedText>
       <ThemedText style={styles.item}>Version: {header.version}</ThemedText>
       <ThemedText style={styles.item}>Title: {header.title}</ThemedText>
-      <ThemedText style={styles.item}>Separator: '{header.separator}'</ThemedText>
+      <ThemedText style={styles.item}>Separator: &apos;{header.separator}&apos;</ThemedText>
       <ThemedText style={styles.item}>Timestamp: {header.timestamp.toISOString()}</ThemedText>
       <ThemedText style={styles.item}>Flags: {header.flags}</ThemedText>
     </ThemedView>
@@ -313,6 +311,9 @@ export default function SurvexDebugView() {
         </TouchableOpacity>
         {selectedFile && (
           <ThemedText style={styles.item}>Selected: {selectedFile}</ThemedText>
+        )}
+        {error && (
+          <ThemedText style={styles.error}>❌ {error}</ThemedText>
         )}
         {!survexData && !isLoading && !selectedFile && (
           <ThemedText style={styles.item}>Tap button to select a .3d file from your phone</ThemedText>

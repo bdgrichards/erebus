@@ -124,7 +124,7 @@ describe('SurvexParser', () => {
         // Show first few stations and their coordinates
         const first5 = parseResult.stations.slice(0, 5);
         console.log('First 5 stations:');
-        first5.forEach((station: any, i) => {
+        first5.forEach((station: any, i: number) => {
           console.log(`  ${i}: "${station.name}" at (${station.x.toFixed(2)}, ${station.y.toFixed(2)}, ${station.z.toFixed(2)})`);
         });
         
