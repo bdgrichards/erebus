@@ -1,8 +1,8 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, useColorScheme, ActivityIndicator } from 'react-native';
 import { Colors } from '@/constants/Colors';
-import { Ionicons } from '@expo/vector-icons';
 import { RecentFile } from '@/lib/storage';
+import { Ionicons } from '@expo/vector-icons';
+import React from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, useColorScheme, View } from 'react-native';
 
 interface HomePageProps {
   onOpenFile: () => void;
@@ -89,7 +89,8 @@ export default function HomePage({ onOpenFile, onOpenSettings, onOpenRecentFile,
       paddingVertical: 16,
       paddingHorizontal: 32,
       borderRadius: 12,
-      margin: 20,
+      marginHorizontal: 20,
+      marginBottom: 40,
       alignItems: 'center',
     },
     openButtonText: {
