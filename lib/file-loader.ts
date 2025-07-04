@@ -8,6 +8,7 @@ export interface FileLoadResult {
   data?: SurvexData;
   fileName?: string;
   filePath?: string;
+  fileSize?: number;
   error?: string;
 }
 
@@ -29,14 +30,14 @@ export const FileLoaderService = {
       const file = result.assets[0];
       console.log(`FileLoader: File selected: ${file.name} (${file.size} bytes)`);
       
-      return await this.loadSurvexFile(file.uri, file.name);
+      return await this.loadSurvexFile(file.uri, file.name, file.size);
     } catch (err) {
       console.error('FileLoader: File picker error:', err);
       return { success: false, error: 'Failed to pick file' };
     }
   },
 
-  async loadSurvexFile(fileUri: string, fileName: string): Promise<FileLoadResult> {
+  async loadSurvexFile(fileUri: string, fileName: string, fileSize?: number): Promise<FileLoadResult> {
     try {
       console.log(`FileLoader: Reading file: ${fileName}`);
       
@@ -63,7 +64,8 @@ export const FileLoaderService = {
         success: true,
         data: parsedData,
         fileName,
-        filePath: fileUri
+        filePath: fileUri,
+        fileSize
       };
     } catch (error) {
       console.error('FileLoader: Error loading file:', error);

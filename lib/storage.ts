@@ -1,59 +1,40 @@
 import * as SecureStore from 'expo-secure-store';
+import { RecentFilesManager, RecentFilesStorage } from './recent-files-manager';
 
-export interface RecentFile {
-  id: string;
-  name: string;
-  path: string;
-  lastOpened: Date;
+export type { RecentFile } from './recent-files-manager';
+
+// Adapter to make expo-secure-store compatible with RecentFilesStorage interface
+class ExpoSecureStoreAdapter implements RecentFilesStorage {
+  async getItem(key: string): Promise<string | null> {
+    return await SecureStore.getItemAsync(key);
+  }
+
+  async setItem(key: string, value: string): Promise<void> {
+    await SecureStore.setItemAsync(key, value);
+  }
+
+  async deleteItem(key: string): Promise<void> {
+    await SecureStore.deleteItemAsync(key);
+  }
 }
 
-const RECENT_FILES_KEY = 'recent_files';
-const MAX_RECENT_FILES = 10;
+// Create the manager instance
+const recentFilesManager = new RecentFilesManager(
+  new ExpoSecureStoreAdapter(),
+  'recent_files',
+  10
+);
 
 export const StorageService = {
-  async getRecentFiles(): Promise<RecentFile[]> {
-    try {
-      const stored = await SecureStore.getItemAsync(RECENT_FILES_KEY);
-      if (!stored) return [];
-      
-      const parsed = JSON.parse(stored);
-      return parsed.map((file: any) => ({
-        ...file,
-        lastOpened: new Date(file.lastOpened)
-      }));
-    } catch (error) {
-      console.error('Error loading recent files:', error);
-      return [];
-    }
+  async getRecentFiles() {
+    return await recentFilesManager.getRecentFiles();
   },
 
-  async addRecentFile(file: Omit<RecentFile, 'id' | 'lastOpened'>): Promise<void> {
-    try {
-      const recentFiles = await this.getRecentFiles();
-      
-      // Remove existing file with same path if it exists
-      const filtered = recentFiles.filter(f => f.path !== file.path);
-      
-      // Add new file at the beginning
-      const newFile: RecentFile = {
-        ...file,
-        id: Date.now().toString(),
-        lastOpened: new Date()
-      };
-      
-      const updated = [newFile, ...filtered].slice(0, MAX_RECENT_FILES);
-      
-      await SecureStore.setItemAsync(RECENT_FILES_KEY, JSON.stringify(updated));
-    } catch (error) {
-      console.error('Error saving recent file:', error);
-    }
+  async addRecentFile(file: Parameters<typeof recentFilesManager.addRecentFile>[0]) {
+    return await recentFilesManager.addRecentFile(file);
   },
 
-  async clearRecentFiles(): Promise<void> {
-    try {
-      await SecureStore.deleteItemAsync(RECENT_FILES_KEY);
-    } catch (error) {
-      console.error('Error clearing recent files:', error);
-    }
+  async clearRecentFiles() {
+    return await recentFilesManager.clearRecentFiles();
   }
 };

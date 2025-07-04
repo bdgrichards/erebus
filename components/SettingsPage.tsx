@@ -7,9 +7,10 @@ interface SettingsPageProps {
   onBack: () => void;
   onOpenDebug: () => void;
   onOpenDemo: () => void;
+  onClearRecentFiles: () => void;
 }
 
-export default function SettingsPage({ onBack, onOpenDebug, onOpenDemo }: SettingsPageProps) {
+export default function SettingsPage({ onBack, onOpenDebug, onOpenDemo, onClearRecentFiles }: SettingsPageProps) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
 
@@ -112,6 +113,16 @@ export default function SettingsPage({ onBack, onOpenDebug, onOpenDemo }: Settin
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color={colors.text + '60'} style={styles.chevron} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.menuItem} onPress={onClearRecentFiles}>
+            <Ionicons name="trash" size={24} color={colors.text} style={styles.menuIcon} />
+            <View style={styles.menuContent}>
+              <Text style={styles.menuTitle}>Clear Recent Files</Text>
+              <Text style={styles.menuDescription}>
+                Remove all files from the recent files list
+              </Text>
+            </View>
           </TouchableOpacity>
         </View>
       </View>

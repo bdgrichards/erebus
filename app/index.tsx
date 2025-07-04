@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Alert } from 'react-native';
 import HomePage from '@/components/HomePage';
 import { StorageService, RecentFile } from '@/lib/storage';
@@ -13,26 +13,16 @@ export default function Index() {
     setRecentFiles(files);
   }, []);
 
-  const addTestRecentFile = useCallback(async () => {
-    // Add a test file if none exist
-    const existing = await StorageService.getRecentFiles();
-    if (existing.length === 0) {
-      await StorageService.addRecentFile({
-        name: 'Demo Cave Survey.3d',
-        path: '/demo/cave.3d'
-      });
-      await loadRecentFiles();
-    }
+  useEffect(() => {
+    loadRecentFiles();
   }, [loadRecentFiles]);
 
-  useEffect(() => {
-    const initializeData = async () => {
-      await addTestRecentFile();
-      await loadRecentFiles();
-    };
-    
-    initializeData();
-  }, [addTestRecentFile, loadRecentFiles]);
+  // Refresh recent files when the screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadRecentFiles();
+    }, [loadRecentFiles])
+  );
 
   const handleOpenFile = async () => {
     try {
@@ -49,7 +39,8 @@ export default function Index() {
         // Add to recent files
         await StorageService.addRecentFile({
           name: result.fileName,
-          path: result.filePath
+          path: result.filePath,
+          size: result.fileSize
         });
         
         // Refresh recent files list
@@ -83,7 +74,8 @@ export default function Index() {
         // Update recent files (this will move it to top)
         await StorageService.addRecentFile({
           name: file.name,
-          path: file.path
+          path: file.path,
+          size: file.size
         });
         
         // Refresh recent files list
