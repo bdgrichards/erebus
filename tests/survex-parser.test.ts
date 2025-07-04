@@ -1115,6 +1115,150 @@ describe('SurvexParser', () => {
         });
       });
     });
+
+    describe('Detailed coordinate analysis', () => {
+      test('should analyze station and leg coordinate matching', () => {
+        console.log('=== DETAILED COORDINATE ANALYSIS ===');
+        
+        // Show first 10 stations with their coordinates
+        console.log('First 10 stations:');
+        parseResult.stations.slice(0, 10).forEach((station: any, i: number) => {
+          console.log(`${i}: ${station.name} at (${station.x.toFixed(6)}, ${station.y.toFixed(6)}, ${station.z.toFixed(6)})`);
+        });
+        
+        // Show first 10 legs with their coordinates
+        console.log('First 10 legs:');
+        parseResult.legs.slice(0, 10).forEach((leg: any, i: number) => {
+          console.log(`${i}: ${leg.fromStation} -> ${leg.toStation}`);
+          console.log(`  From: (${leg.fromX.toFixed(6)}, ${leg.fromY.toFixed(6)}, ${leg.fromZ.toFixed(6)})`);
+          console.log(`  To:   (${leg.toX.toFixed(6)}, ${leg.toY.toFixed(6)}, ${leg.toZ.toFixed(6)})`);
+        });
+        
+        // Check for exact coordinate matches between stations and leg endpoints
+        console.log('Checking for coordinate matches...');
+        const stationMap = new Map();
+        parseResult.stations.forEach((station: any) => {
+          const key = `${station.x.toFixed(6)},${station.y.toFixed(6)},${station.z.toFixed(6)}`;
+          stationMap.set(key, station.name);
+        });
+        
+        let matchesFound = 0;
+        parseResult.legs.forEach((leg: any, i: number) => {
+          const fromKey = `${leg.fromX.toFixed(6)},${leg.fromY.toFixed(6)},${leg.fromZ.toFixed(6)}`;
+          const toKey = `${leg.toX.toFixed(6)},${leg.toY.toFixed(6)},${leg.toZ.toFixed(6)}`;
+          
+          const fromStation = stationMap.get(fromKey);
+          const toStation = stationMap.get(toKey);
+          
+          if (fromStation && leg.fromStation !== fromStation) {
+            console.log(`Leg ${i}: fromStation mismatch - expected ${fromStation}, got "${leg.fromStation}"`);
+          }
+          if (toStation && leg.toStation !== toStation) {
+            console.log(`Leg ${i}: toStation mismatch - expected ${toStation}, got "${leg.toStation}"`);
+          }
+          if (fromStation || toStation) {
+            matchesFound++;
+          }
+        });
+        
+        console.log(`Found ${matchesFound} legs with coordinate matches to stations`);
+        
+        // Check for the specific main survey legs we're looking for
+        console.log('Checking for main survey legs...');
+        const station0 = parseResult.stations.find((s: any) => s.name === 'coincidence.coincidence_ent.0');
+        const station1 = parseResult.stations.find((s: any) => s.name === 'coincidence.coincidence_ent.1');
+        
+        if (station0 && station1) {
+          console.log('Station 0:', station0);
+          console.log('Station 1:', station1);
+          
+          // Look for a leg that connects these coordinates
+          const connectingLeg = parseResult.legs.find((leg: any) => 
+            Math.abs(leg.fromX - station0.x) < 0.001 &&
+            Math.abs(leg.fromY - station0.y) < 0.001 &&
+            Math.abs(leg.fromZ - station0.z) < 0.001 &&
+            Math.abs(leg.toX - station1.x) < 0.001 &&
+            Math.abs(leg.toY - station1.y) < 0.001 &&
+            Math.abs(leg.toZ - station1.z) < 0.001
+          );
+          
+          if (connectingLeg) {
+            console.log('Found connecting leg:', connectingLeg);
+          } else {
+            console.log('No connecting leg found between stations 0 and 1');
+          }
+        }
+      });
+    });
+
+    describe('Item sequence analysis', () => {
+      test('should trace the sequence of LINE and LABEL items', () => {
+        console.log('=== ITEM SEQUENCE ANALYSIS ===');
+        
+        const parser = new SurvexParser(testFileData);
+        let pos = 50; // Start after header
+        let itemCount = 0;
+        const itemSequence: any[] = [];
+        
+        while (pos < testFileData.length && itemCount < 50) { // Limit to first 50 items
+          const type = testFileData[pos];
+          itemCount++;
+          
+          let itemInfo: any = {
+            position: pos,
+            type: '0x' + type.toString(16),
+            decimal: type
+          };
+          
+          pos++;
+          
+          if (type === 0x0f) { // MOVE
+            itemInfo.description = 'MOVE';
+            pos += 12; // 3 coordinates * 4 bytes
+          } else if (type >= 0x40 && type <= 0x7f) { // LINE
+            itemInfo.description = 'LINE';
+            // Skip label modification + 3 coordinates
+            pos += 12; // Assume simple label + coordinates
+          } else if (type >= 0x80 && type <= 0xff) { // LABEL
+            itemInfo.description = 'LABEL';
+            // Skip label modification + 3 coordinates
+            pos += 12; // Assume simple label + coordinates
+          } else if (type >= 0x00 && type <= 0x04) { // STYLE
+            itemInfo.description = 'STYLE';
+            pos += 1; // Skip style data
+          } else if (type === 0x10 || type === 0x11) { // DATE
+            itemInfo.description = 'DATE';
+            pos += 2; // 2 bytes for date
+          } else {
+            itemInfo.description = 'UNKNOWN';
+            pos += 1; // Skip unknown item
+          }
+          
+          itemSequence.push(itemInfo);
+        }
+        
+        console.log('First 50 items:');
+        itemSequence.forEach((item, i) => {
+          console.log(`${i}: ${item.description} (${item.type}) at pos ${item.position}`);
+        });
+        
+        // Look for patterns in the sequence
+        console.log('Analyzing patterns...');
+        const lineItems = itemSequence.filter(item => item.description === 'LINE');
+        const labelItems = itemSequence.filter(item => item.description === 'LABEL');
+        
+        console.log(`Found ${lineItems.length} LINE items and ${labelItems.length} LABEL items in first 50 items`);
+        
+        // Check if LINE items are followed by LABEL items
+        let lineFollowedByLabel = 0;
+        for (let i = 0; i < itemSequence.length - 1; i++) {
+          if (itemSequence[i].description === 'LINE' && itemSequence[i + 1].description === 'LABEL') {
+            lineFollowedByLabel++;
+          }
+        }
+        console.log(`LINE items followed by LABEL items: ${lineFollowedByLabel}`);
+      });
+    });
   });
 });
 

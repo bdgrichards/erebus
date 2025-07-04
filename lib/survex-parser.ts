@@ -281,24 +281,43 @@ export class SurvexParser {
         this.legs.push(newLeg);
         this.pendingLeg = newLeg;
         this.currentPoint = { ...item.point };
+        // Clear the last station label after using it for the leg
         this.lastStationLabel = null;
-        this.lastStationPoint = null;
+        console.log('LINE: Created leg from', newLeg.fromStation || '(unnamed)', 'to new position', item.point);
       }
     }
-    // LABEL: define a station at the given coordinates
+    // LABEL: define a station at the current position and update the current station label
     else if (item.type >= SurvexItemType.LABEL_START && item.type <= SurvexItemType.LABEL_END) {
       if (item.point && item.label) {
         this.stations.set(item.label, item.point);
         this.lastStationLabel = item.label;
         this.lastStationPoint = { ...item.point };
         this.currentPoint = { ...item.point };
-        // If we have a pending leg that ends at this position, update its toStation
-        if (this.pendingLeg &&
-            Math.abs(this.pendingLeg.toX - item.point.x) < 0.001 &&
-            Math.abs(this.pendingLeg.toY - item.point.y) < 0.001 &&
-            Math.abs(this.pendingLeg.toZ - item.point.z) < 0.001) {
-          this.pendingLeg.toStation = item.label;
-          this.pendingLeg = null;
+        
+        // Retroactively assign station names to legs that end at this position
+        // Look through recent legs (last 10) to find matches
+        for (let i = this.legs.length - 1; i >= Math.max(0, this.legs.length - 10); i--) {
+          const leg = this.legs[i];
+          if (Math.abs(leg.toX - item.point.x) < 0.001 &&
+              Math.abs(leg.toY - item.point.y) < 0.001 &&
+              Math.abs(leg.toZ - item.point.z) < 0.001 &&
+              leg.toStation === '') {
+            leg.toStation = item.label;
+            console.log('LABEL: Retroactively assigned', item.label, 'to leg', i);
+            break; // Only assign to the most recent matching leg
+          }
+        }
+        
+        // Also check if any leg starts at this position and needs fromStation assigned
+        for (let i = this.legs.length - 1; i >= Math.max(0, this.legs.length - 10); i--) {
+          const leg = this.legs[i];
+          if (Math.abs(leg.fromX - item.point.x) < 0.001 &&
+              Math.abs(leg.fromY - item.point.y) < 0.001 &&
+              Math.abs(leg.fromZ - item.point.z) < 0.001 &&
+              leg.fromStation === '') {
+            leg.fromStation = item.label;
+            console.log('LABEL: Retroactively assigned', item.label, 'as fromStation to leg', i);
+          }
         }
       }
     }
