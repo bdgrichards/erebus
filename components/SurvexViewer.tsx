@@ -1,14 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, Dimensions, TouchableOpacity, PanResponder, Text } from 'react-native';
 import { GLView } from 'expo-gl';
 import { Renderer } from 'expo-three';
+import React, { useEffect, useRef, useState } from 'react';
+import { Dimensions, PanResponder, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as THREE from 'three';
-import { SurvexData, SurvexStation, SurvexLeg } from '../lib/survex-types';
 import { SurvexParser } from '../lib/survex-parser';
+import { SurvexData } from '../lib/survex-types';
 import { ThemedText } from './ThemedText';
 import { ThemedView } from './ThemedView';
-import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
 
 interface SurvexViewerProps {
   data?: SurvexData;
@@ -19,10 +17,7 @@ interface SurvexViewerProps {
 const getDimensions = () => Dimensions.get('window');
 
 export default function SurvexViewer({ data, style }: SurvexViewerProps) {
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [survexData, setSurvexData] = useState<SurvexData | null>(null);
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<Renderer | null>(null);
@@ -201,36 +196,9 @@ export default function SurvexViewer({ data, style }: SurvexViewerProps) {
     },
   });
 
-  const pickFile = async () => {
-    try {
-      console.log('3D Viewer: Opening file picker...');
-      
-      const result = await DocumentPicker.getDocumentAsync({
-        type: '*/*',
-        copyToCacheDirectory: true,
-      });
-      
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const file = result.assets[0];
-        console.log(`3D Viewer: File selected: ${file.name} (${file.size} bytes)`);
-        
-        setSelectedFile(file.uri);
-        setSurvexData(null);
-        setError(null);
-        
-        await loadSurvexFile(file.uri);
-      } else {
-        console.log('3D Viewer: File selection cancelled');
-      }
-    } catch (err) {
-      console.log(`3D Viewer: File picker error: ${err}`);
-      setError('Failed to pick file');
-    }
-  };
 
   const loadSurvexFile = async (fileUri?: string) => {
     try {
-      setIsLoading(true);
       setError(null);
       
       let uint8Array: Uint8Array;
@@ -486,14 +454,12 @@ export default function SurvexViewer({ data, style }: SurvexViewerProps) {
   const onContextCreate = async (gl: any) => {
     const { scene, camera, renderer } = setupScene(gl);
     
-    // Use existing survexData state or provided data prop
-    const currentData = data || survexData;
-    
-    if (currentData) {
-      console.log('3D Viewer: Creating cave geometry with data:', currentData.stations.length, 'stations,', currentData.legs.length, 'legs');
-      createCaveGeometry(currentData, scene);
+    // Use provided data prop
+    if (data) {
+      console.log('3D Viewer: Creating cave geometry with data:', data.stations.length, 'stations,', data.legs.length, 'legs');
+      createCaveGeometry(data, scene);
     } else {
-      console.log('3D Viewer: No data available for rendering');
+      console.log('3D Viewer: No data provided');
     }
     
     // Render loop
@@ -534,13 +500,6 @@ export default function SurvexViewer({ data, style }: SurvexViewerProps) {
     render();
   };
 
-  if (isLoading) {
-    return (
-      <ThemedView style={[styles.container, style]}>
-        <ThemedText>Loading 3D cave survey...</ThemedText>
-      </ThemedView>
-    );
-  }
 
   if (error) {
     return (
@@ -555,18 +514,14 @@ export default function SurvexViewer({ data, style }: SurvexViewerProps) {
 
   return (
     <View style={[styles.container, style]}>
-      {!survexData && (
+      {!data && (
         <ThemedView style={styles.overlay}>
           <ThemedText style={styles.overlayText}>No 3D data loaded</ThemedText>
-          <TouchableOpacity style={styles.button} onPress={pickFile}>
-            <ThemedText style={styles.buttonText}>Pick Survex File</ThemedText>
-          </TouchableOpacity>
         </ThemedView>
       )}
-      {survexData && (
+      {data && (
         <View style={styles.glContainer}>
           <GLView
-            key={selectedFile} // Force re-render when file changes
             style={styles.glView}
             onContextCreate={onContextCreate}
           />
