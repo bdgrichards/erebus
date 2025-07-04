@@ -43,25 +43,34 @@ export interface SurvexData {
 }
 
 export enum SurvexItemType {
-  MOVE = 0,
-  LINE = 1,
-  LABEL = 2,
-  STOP = 3,
-  STYLE = 4,
-  XSECT = 5,
-  XSECT_END = 6,
-  PASSAGE = 7,
-  SURFACE = 8,
-  UNDERGROUND = 9,
-  COLLINE = 10,
-  NOSURFACE = 11,
-  NOSURVEY = 12,
-  PASSAGE_END = 13,
-  SURFACE_END = 14,
-  UNDERGROUND_END = 15,
-  COLLINE_END = 16,
-  NOSURFACE_END = 17,
-  NOSURVEY_END = 18,
+  // Style items
+  NORMAL_STYLE = 0x00,
+  DIVING_STYLE = 0x01,
+  CARTESIAN_STYLE = 0x02, 
+  CYLINDER_STYLE = 0x03,
+  NOSURVEY_STYLE = 0x04,
+  
+  // Movement and positioning
+  MOVE = 0x0f,
+  
+  // Date items
+  DATE1 = 0x10,
+  DATE2 = 0x11,
+  
+  // Error information
+  ERROR_INFO = 0x1f,
+  
+  // Cross-sections
+  XSECT = 0x30,
+  XSECT_END = 0x31,
+  
+  // Line segments (0x40-0x7f)
+  LINE_START = 0x40,
+  LINE_END = 0x7f,
+  
+  // Station labels (0x80-0xff)
+  LABEL_START = 0x80,
+  LABEL_END = 0xff,
 }
 
 export interface SurvexPoint {

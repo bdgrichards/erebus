@@ -21,24 +21,16 @@ export default function SurvexDebugView() {
     console.log(message);
     setDebugLogs(prev => [...prev, message]);
     
-    // Write to log file in a predictable location
+    // Write to log file in cache directory (iOS compatible)
     try {
-      const logPath = '/tmp/survex-debug.log';
       const timestamp = new Date().toISOString();
       const logEntry = `[${timestamp}] ${message}\n`;
+      const logPath = `${FileSystem.cacheDirectory}survex-debug.log`;
       await FileSystem.writeAsStringAsync(logPath, logEntry, { append: true });
-      console.log('📝 Log written to:', logPath);
+      // Don't log success to avoid spam
     } catch (error) {
-      console.error('Failed to write log:', error);
-      // Fallback: try a different location
-      try {
-        const fallbackPath = `${FileSystem.cacheDirectory}survex-debug.log`;
-        const logEntry = `[${timestamp}] ${message}\n`;
-        await FileSystem.writeAsStringAsync(fallbackPath, logEntry, { append: true });
-        console.log('📝 Log written to fallback:', fallbackPath);
-      } catch (fallbackError) {
-        console.error('Fallback log write failed:', fallbackError);
-      }
+      // Silent fail to avoid log spam - just use console
+      // console.error('Failed to write log:', error);
     }
   };
 
@@ -133,8 +125,8 @@ export default function SurvexDebugView() {
   };
 
   const createDemoSurvexBinaryData = async (): Promise<Uint8Array> => {
-    // Create a minimal valid Survex v8 file for testing
-    await addDebugLog('📝 Creating demo Survex binary data...');
+    // Create a minimal valid Survex v8 file for testing according to spec
+    await addDebugLog('📝 Creating demo Survex v8 binary data...');
     const encoder = new TextEncoder();
     const parts: Uint8Array[] = [];
     
@@ -148,63 +140,56 @@ export default function SurvexDebugView() {
     parts.push(versionPart);
     await addDebugLog(`📝 Added version: ${versionPart.length} bytes`);
     
-    // Title (null-terminated)
-    const titlePart = encoder.encode('Demo Cave\0');
+    // Survey title (linefeed-terminated, like the real file)
+    const titlePart = encoder.encode('Demo Cave\n');
     parts.push(titlePart);
-    await addDebugLog(`📝 Added title: ${titlePart.length} bytes`);
+    await addDebugLog(`📝 Added survey title: ${titlePart.length} bytes`);
     
-    // Separator (null-terminated)
-    const separatorPart = encoder.encode('.\0');
-    parts.push(separatorPart);
-    await addDebugLog(`📝 Added separator: ${separatorPart.length} bytes`);
-    
-    // Timestamp (32-bit little-endian Unix timestamp)
+    // Timestamp string "@" + Unix timestamp + linefeed
     const timestamp = Math.floor(Date.now() / 1000);
-    const timestampBytes = new Uint8Array(4);
-    new DataView(timestampBytes.buffer).setUint32(0, timestamp, true);
-    parts.push(timestampBytes);
-    await addDebugLog(`📝 Added timestamp: ${timestampBytes.length} bytes, value: ${timestamp}`);
+    const timestampPart = encoder.encode(`@${timestamp}\n`);
+    parts.push(timestampPart);
+    await addDebugLog(`📝 Added timestamp: ${timestampPart.length} bytes, value: @${timestamp}`);
     
-    // Flags (8-bit)
+    // File-wide flags (8-bit)
     const flagsPart = new Uint8Array([0]);
     parts.push(flagsPart);
     await addDebugLog(`📝 Added flags: ${flagsPart.length} bytes`);
     
-    // Now add some survey data items
+    // Now add some survey data items according to v8 spec
     await addDebugLog('📝 Adding survey data items...');
     
-    // Add a MOVE item (type 0) to (100, 200, 300)
+    // Add a MOVE item (type 0x0f) to (10000, 20000, 30000) centimeters = (100, 200, 300) meters
     const moveItem = new Uint8Array(13); // 1 byte type + 12 bytes coordinates
-    moveItem[0] = 0; // MOVE type
-    new DataView(moveItem.buffer, 1).setInt32(0, 100, true); // x
-    new DataView(moveItem.buffer, 5).setInt32(0, 200, true); // y  
-    new DataView(moveItem.buffer, 9).setInt32(0, 300, true); // z
+    moveItem[0] = 0x0f; // MOVE type
+    new DataView(moveItem.buffer, 1).setInt32(0, 10000, true); // x in centimeters
+    new DataView(moveItem.buffer, 5).setInt32(0, 20000, true); // y in centimeters
+    new DataView(moveItem.buffer, 9).setInt32(0, 30000, true); // z in centimeters
     parts.push(moveItem);
-    await addDebugLog(`📝 Added MOVE item: ${moveItem.length} bytes`);
+    await addDebugLog(`📝 Added MOVE item (0x0f): ${moveItem.length} bytes`);
     
-    // Add a LINE item (type 1) with relative coordinates (50, 30, -10)
+    // Add a LINE item (type 0x40) with relative coordinates (5000, 3000, -1000) cm = (50, 30, -10) m
     const lineItem = new Uint8Array(13); // 1 byte type + 12 bytes coordinates
-    lineItem[0] = 1; // LINE type
-    new DataView(lineItem.buffer, 1).setInt32(0, 50, true); // dx
-    new DataView(lineItem.buffer, 5).setInt32(0, 30, true); // dy
-    new DataView(lineItem.buffer, 9).setInt32(0, -10, true); // dz
+    lineItem[0] = 0x40; // LINE type (0x40-0x7f range)
+    new DataView(lineItem.buffer, 1).setInt32(0, 5000, true); // dx in centimeters
+    new DataView(lineItem.buffer, 5).setInt32(0, 3000, true); // dy in centimeters
+    new DataView(lineItem.buffer, 9).setInt32(0, -1000, true); // dz in centimeters
     parts.push(lineItem);
-    await addDebugLog(`📝 Added LINE item: ${lineItem.length} bytes`);
+    await addDebugLog(`📝 Added LINE item (0x40): ${lineItem.length} bytes`);
     
-    // Add a LABEL item (type 2) 
-    const labelCoords = new Uint8Array(16); // 12 bytes coords + 4 bytes flags
-    new DataView(labelCoords.buffer, 0).setInt32(0, 150, true); // x
-    new DataView(labelCoords.buffer, 4).setInt32(0, 230, true); // y
-    new DataView(labelCoords.buffer, 8).setInt32(0, 290, true); // z
-    new DataView(labelCoords.buffer, 12).setUint32(0, 0, true); // flags
+    // Add a LABEL item (type 0x80) at (15000, 23000, 29000) cm = (150, 230, 290) m
+    const labelCoords = new Uint8Array(12); // 12 bytes coordinates (no separate flags field)
+    new DataView(labelCoords.buffer, 0).setInt32(0, 15000, true); // x in centimeters
+    new DataView(labelCoords.buffer, 4).setInt32(0, 23000, true); // y in centimeters
+    new DataView(labelCoords.buffer, 8).setInt32(0, 29000, true); // z in centimeters
     
     const labelText = encoder.encode('station1\0');
     const labelItem = new Uint8Array(1 + labelCoords.length + labelText.length);
-    labelItem[0] = 2; // LABEL type
+    labelItem[0] = 0x80; // LABEL type (0x80-0xff range)
     labelItem.set(labelCoords, 1);
     labelItem.set(labelText, 1 + labelCoords.length);
     parts.push(labelItem);
-    await addDebugLog(`📝 Added LABEL item: ${labelItem.length} bytes`);
+    await addDebugLog(`📝 Added LABEL item (0x80): ${labelItem.length} bytes`);
     
     // Calculate total length
     const totalLength = parts.reduce((sum, part) => sum + part.length, 0);

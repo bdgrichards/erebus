@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, Dimensions, TouchableOpacity, PanResponder } from 'react-native';
+import { View, StyleSheet, Dimensions, TouchableOpacity, PanResponder, Text } from 'react-native';
 import { GLView } from 'expo-gl';
 import { Renderer } from 'expo-three';
 import * as THREE from 'three';
@@ -41,12 +41,27 @@ export default function SurvexViewer({ data, style }: SurvexViewerProps) {
   const [isPinching, setIsPinching] = useState(false);
   const [initialPinchDistance, setInitialPinchDistance] = useState(0);
   const [gestureMode, setGestureMode] = useState<'none' | 'pan' | 'pinch'>('none');
+  const [compassHeading, setCompassHeading] = useState(0);
+  const [tiltAngle, setTiltAngle] = useState(0);
   
   // Utility function to calculate distance between two touch points
   const calculateDistance = (touch1: any, touch2: any) => {
     const dx = touch1.pageX - touch2.pageX;
     const dy = touch1.pageY - touch2.pageY;
     return Math.sqrt(dx * dx + dy * dy);
+  };
+  
+  // Function to update compass and tilt indicators
+  const updateCameraIndicators = (theta: number, phi: number) => {
+    // Convert theta to compass heading (0 = North, 90 = East, 180 = South, 270 = West)
+    let heading = ((theta * 180 / Math.PI) + 90) % 360;
+    if (heading < 0) heading += 360;
+    setCompassHeading(Math.round(heading));
+    
+    // Convert phi to tilt angle (0 = horizontal, +90 = looking down, -90 = looking up)
+    // Invert the sign to match expected behavior
+    const tilt = -(phi - Math.PI / 2) * 180 / Math.PI;
+    setTiltAngle(Math.round(tilt));
   };
   
   // Use refs for camera values - keep upright view
@@ -80,6 +95,7 @@ export default function SurvexViewer({ data, style }: SurvexViewerProps) {
         const newPhi = Math.max(0.1, Math.min(Math.PI - 0.1, cameraRotationRef.current.phi - deltaY * sensitivity));
         
         cameraRotationRef.current = { theta: newTheta, phi: newPhi };
+        updateCameraIndicators(newTheta, newPhi);
         console.log('3D Viewer: Rotation', newTheta.toFixed(2), newPhi.toFixed(2));
         
         setLastTouch({
@@ -493,14 +509,19 @@ export default function SurvexViewer({ data, style }: SurvexViewerProps) {
       camera.position.set(x, y, z);
       camera.lookAt(target.x, target.y, target.z);
       
-      // Debug: Log camera info occasionally (every 60 frames = ~1 second)
-      if (Math.random() < 0.016) { // ~1/60 chance each frame
-        console.log('3D Viewer: Camera -', {
-          position: { x: x.toFixed(1), y: y.toFixed(1), z: z.toFixed(1) },
-          target: { x: target.x.toFixed(1), y: target.y.toFixed(1), z: target.z.toFixed(1) },
-          distance: distance.toFixed(1),
-          rotation: { theta: rotation.theta.toFixed(2), phi: rotation.phi.toFixed(2) }
-        });
+      // Update indicators occasionally (every 30 frames = ~0.5 second)
+      if (Math.random() < 0.033) { // ~1/30 chance each frame
+        updateCameraIndicators(rotation.theta, rotation.phi);
+        
+        // Debug: Log camera info occasionally (every 60 frames = ~1 second)
+        if (Math.random() < 0.5) { // Half the time when updating indicators
+          console.log('3D Viewer: Camera -', {
+            position: { x: x.toFixed(1), y: y.toFixed(1), z: z.toFixed(1) },
+            target: { x: target.x.toFixed(1), y: target.y.toFixed(1), z: target.z.toFixed(1) },
+            distance: distance.toFixed(1),
+            rotation: { theta: rotation.theta.toFixed(2), phi: rotation.phi.toFixed(2) }
+          });
+        }
       }
       
       renderer.render(scene, camera);
@@ -550,6 +571,34 @@ export default function SurvexViewer({ data, style }: SurvexViewerProps) {
             style={styles.touchOverlay} 
             {...panResponder.panHandlers}
           />
+          
+          {/* Camera indicators overlay */}
+          <View style={styles.indicatorsOverlay}>
+            <View style={styles.compassIndicator}>
+              <Text style={styles.indicatorLabel}>Compass</Text>
+              <Text style={styles.indicatorValue}>{compassHeading}°</Text>
+              <Text style={styles.indicatorDirection}>
+                {compassHeading >= 337.5 || compassHeading < 22.5 ? 'N' :
+                 compassHeading >= 22.5 && compassHeading < 67.5 ? 'NE' :
+                 compassHeading >= 67.5 && compassHeading < 112.5 ? 'E' :
+                 compassHeading >= 112.5 && compassHeading < 157.5 ? 'SE' :
+                 compassHeading >= 157.5 && compassHeading < 202.5 ? 'S' :
+                 compassHeading >= 202.5 && compassHeading < 247.5 ? 'SW' :
+                 compassHeading >= 247.5 && compassHeading < 292.5 ? 'W' : 'NW'}
+              </Text>
+            </View>
+            
+            <View style={styles.tiltIndicator}>
+              <Text style={styles.indicatorLabel}>Tilt</Text>
+              <Text style={styles.indicatorValue}>{tiltAngle}°</Text>
+              <Text style={styles.indicatorDirection}>
+                {tiltAngle > 60 ? 'Down' :
+                 tiltAngle > 30 ? 'Down-Angled' :
+                 tiltAngle > -30 ? 'Horizontal' :
+                 tiltAngle > -60 ? 'Up-Angled' : 'Up'}
+              </Text>
+            </View>
+          </View>
         </View>
       )}
     </View>
@@ -610,5 +659,44 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     textAlign: 'center',
+  },
+  indicatorsOverlay: {
+    position: 'absolute',
+    top: 60,
+    right: 20,
+    zIndex: 10,
+    flexDirection: 'column',
+    gap: 10,
+  },
+  compassIndicator: {
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    padding: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    minWidth: 80,
+  },
+  tiltIndicator: {
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    padding: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    minWidth: 80,
+  },
+  indicatorLabel: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  indicatorValue: {
+    color: '#00ff00',
+    fontSize: 16,
+    fontWeight: 'bold',
+    fontFamily: 'monospace',
+  },
+  indicatorDirection: {
+    color: '#cccccc',
+    fontSize: 10,
+    marginTop: 2,
   },
 });
