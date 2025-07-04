@@ -372,14 +372,15 @@ export default function SurvexViewer({ data, style }: SurvexViewerProps) {
       console.log('3D Viewer: Raw dimensions:', rawDimensions);
       console.log('3D Viewer: Max dimension:', maxDimension, 'Scale factor:', scale.toExponential(2));
       
-      // Calculate final scaled bounds
+      // Calculate final scaled bounds with coordinate rotation
+      // Y becomes Z, Z becomes Y (90 degree rotation around X-axis in opposite direction)
       const scaledBounds = {
         minX: survexData.bounds.minX * scale,
         maxX: survexData.bounds.maxX * scale,
-        minY: survexData.bounds.minY * scale,
-        maxY: survexData.bounds.maxY * scale,
-        minZ: survexData.bounds.minZ * scale,
-        maxZ: survexData.bounds.maxZ * scale
+        minY: survexData.bounds.minZ * scale,   // Z becomes Y
+        maxY: survexData.bounds.maxZ * scale,   // Z becomes Y
+        minZ: survexData.bounds.minY * scale,   // Y becomes Z
+        maxZ: survexData.bounds.maxY * scale    // Y becomes Z
       };
       const scaledDimensions = {
         width: scaledBounds.maxX - scaledBounds.minX,
@@ -406,8 +407,9 @@ export default function SurvexViewer({ data, style }: SurvexViewerProps) {
       
       for (let i = 0; i < maxLegs; i++) {
         const leg = survexData.legs[i];
-        const fromPoint = new THREE.Vector3(leg.fromX * scale, leg.fromY * scale, leg.fromZ * scale);
-        const toPoint = new THREE.Vector3(leg.toX * scale, leg.toY * scale, leg.toZ * scale);
+        // Rotate coordinates: Y becomes Z, Z becomes Y (90 degree rotation around X-axis in opposite direction)
+        const fromPoint = new THREE.Vector3(leg.fromX * scale, leg.fromZ * scale, leg.fromY * scale);
+        const toPoint = new THREE.Vector3(leg.toX * scale, leg.toZ * scale, leg.toY * scale);
         points.push(fromPoint);
         points.push(toPoint);
         
@@ -447,7 +449,8 @@ export default function SurvexViewer({ data, style }: SurvexViewerProps) {
       for (let i = 0; i < maxStations; i++) {
         const station = survexData.stations[i];
         const stationMesh = new THREE.Mesh(stationGeometry, stationMaterial);
-        stationMesh.position.set(station.x * scale, station.y * scale, station.z * scale);
+        // Rotate coordinates: Y becomes Z, Z becomes Y (90 degree rotation around X-axis in opposite direction)
+        stationMesh.position.set(station.x * scale, station.z * scale, station.y * scale);
         scene.add(stationMesh);
       }
       
