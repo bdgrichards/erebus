@@ -695,6 +695,427 @@ describe('SurvexParser', () => {
       expect(parseResult.stations.length).toBeGreaterThan(0);
     });
   });
+
+  describe('Item type analysis', () => {
+    test('should analyze item types in the file', () => {
+      console.log('Analyzing item types in the file...');
+      
+      const parser = new SurvexParser(testFileData);
+      let pos = 50; // Start after header
+      const itemTypes: { [key: number]: number } = {};
+      
+      while (pos < testFileData.length) {
+        const type = testFileData[pos];
+        itemTypes[type] = (itemTypes[type] || 0) + 1;
+        pos++;
+        
+        // Skip to next item based on type
+        if (type === 0x0f) { // MOVE
+          pos += 12; // 3 coordinates * 4 bytes
+        } else if (type >= 0x40 && type <= 0x7f) { // LINE
+          // Skip label modification + 3 coordinates
+          pos += 12; // Assume simple label + coordinates
+        } else if (type >= 0x80 && type <= 0xff) { // LABEL
+          // Skip label modification + 3 coordinates  
+          pos += 12; // Assume simple label + coordinates
+        } else if (type >= 0x10 && type <= 0x13) { // DATE
+          if (type === 0x11) pos += 2; // 2 bytes for date
+          // Other date types have different sizes
+        } else if (type === 0x1f) { // ERROR
+          pos += 20; // 5 values * 4 bytes
+        } else {
+          // Unknown type, skip 1 byte and continue
+          pos++;
+        }
+      }
+      
+      console.log('Item type distribution:');
+      Object.keys(itemTypes).sort((a, b) => parseInt(a) - parseInt(b)).forEach(type => {
+        const count = itemTypes[parseInt(type)];
+        const hex = '0x' + parseInt(type).toString(16).padStart(2, '0');
+        let description = '';
+        
+        if (parseInt(type) === 0x0f) description = ' (MOVE)';
+        else if (parseInt(type) >= 0x40 && parseInt(type) <= 0x7f) description = ' (LINE)';
+        else if (parseInt(type) >= 0x80 && parseInt(type) <= 0xff) description = ' (LABEL)';
+        else if (parseInt(type) >= 0x10 && parseInt(type) <= 0x13) description = ' (DATE)';
+        else if (parseInt(type) === 0x1f) description = ' (ERROR)';
+        else if (parseInt(type) <= 0x04) description = ' (STYLE)';
+        
+        console.log(`  ${hex} (${type}): ${count}${description}`);
+      });
+      
+      // Check if we have LINE items
+      const lineItems = Object.keys(itemTypes).filter((t: string) => {
+        const type = parseInt(t);
+        return type >= 0x40 && type <= 0x7f;
+      });
+      
+      console.log('LINE items found:', lineItems.length);
+      if (lineItems.length > 0) {
+        console.log('LINE item types:', lineItems.map(t => '0x' + parseInt(t).toString(16)).join(', '));
+      } else {
+        console.log('WARNING: No LINE items found! All coordinate items are LABEL items.');
+      }
+    });
+  });
+
+  describe('Comprehensive validation tests', () => {
+    let parser: SurvexParser;
+    let parseResult: any;
+
+    beforeAll(() => {
+      parser = new SurvexParser(testFileData);
+      parseResult = parser.parse();
+    });
+
+    describe('Station validation', () => {
+      test('should have exactly 54 stations total', () => {
+        expect(parseResult.stations).toHaveLength(54);
+      });
+
+      test('should have all 47 coincidence_ent stations (0-46)', () => {
+        const coincidenceEntStations = parseResult.stations.filter((s: any) => 
+          s.name.startsWith('coincidence.coincidence_ent.')
+        );
+        expect(coincidenceEntStations).toHaveLength(47);
+        
+        // Check specific stations exist
+        expect(coincidenceEntStations.some((s: any) => s.name === 'coincidence.coincidence_ent.0')).toBe(true);
+        expect(coincidenceEntStations.some((s: any) => s.name === 'coincidence.coincidence_ent.1')).toBe(true);
+        expect(coincidenceEntStations.some((s: any) => s.name === 'coincidence.coincidence_ent.46')).toBe(true);
+      });
+
+      test('should have all 7 narrow_no_escape stations (1-7)', () => {
+        const narrowStations = parseResult.stations.filter((s: any) => 
+          s.name.startsWith('coincidence.narrow_no_escape.')
+        );
+        expect(narrowStations).toHaveLength(7);
+        
+        // Check specific stations exist
+        expect(narrowStations.some((s: any) => s.name === 'coincidence.narrow_no_escape.1')).toBe(true);
+        expect(narrowStations.some((s: any) => s.name === 'coincidence.narrow_no_escape.7')).toBe(true);
+      });
+
+      test('should have correct coordinates for key stations', () => {
+        const station0 = parseResult.stations.find((s: any) => s.name === 'coincidence.coincidence_ent.0');
+        expect(station0).toBeDefined();
+        expect(station0.x).toBeCloseTo(18.02, 2);
+        expect(station0.y).toBeCloseTo(-58.78, 2);
+        expect(station0.z).toBeCloseTo(20.47, 2);
+
+        const station1 = parseResult.stations.find((s: any) => s.name === 'coincidence.coincidence_ent.1');
+        expect(station1).toBeDefined();
+        expect(station1.x).toBeCloseTo(16.69, 2);
+        expect(station1.y).toBeCloseTo(-54.96, 2);
+        expect(station1.z).toBeCloseTo(21.56, 2);
+      });
+    });
+
+    describe('Leg validation', () => {
+      test('should have exactly 1274 legs total', () => {
+        expect(parseResult.legs).toHaveLength(1274);
+      });
+
+      test('should have correct main survey legs with exact distances', () => {
+        // Test specific legs from centreline data
+        const leg0to1 = parseResult.legs.find((l: any) => 
+          l.fromStation === 'coincidence.coincidence_ent.0' && 
+          l.toStation === 'coincidence.coincidence_ent.1'
+        );
+        expect(leg0to1).toBeDefined();
+        expect(leg0to1.fromX).toBeCloseTo(18.02, 2);
+        expect(leg0to1.fromY).toBeCloseTo(-58.78, 2);
+        expect(leg0to1.fromZ).toBeCloseTo(20.47, 2);
+        expect(leg0to1.toX).toBeCloseTo(16.69, 2);
+        expect(leg0to1.toY).toBeCloseTo(-54.96, 2);
+        expect(leg0to1.toZ).toBeCloseTo(21.56, 2);
+        
+        // Calculate distance and verify it matches centreline
+        const distance = Math.sqrt(
+          Math.pow(leg0to1.toX - leg0to1.fromX, 2) +
+          Math.pow(leg0to1.toY - leg0to1.fromY, 2) +
+          Math.pow(leg0to1.toZ - leg0to1.fromZ, 2)
+        );
+        expect(distance).toBeCloseTo(4.19, 2); // From centreline: 4.19m
+      });
+
+      test('should have correct leg 1->2 with exact distance', () => {
+        const leg1to2 = parseResult.legs.find((l: any) => 
+          l.fromStation === 'coincidence.coincidence_ent.1' && 
+          l.toStation === 'coincidence.coincidence_ent.2'
+        );
+        expect(leg1to2).toBeDefined();
+        
+        const distance = Math.sqrt(
+          Math.pow(leg1to2.toX - leg1to2.fromX, 2) +
+          Math.pow(leg1to2.toY - leg1to2.fromY, 2) +
+          Math.pow(leg1to2.toZ - leg1to2.fromZ, 2)
+        );
+        expect(distance).toBeCloseTo(2.28, 2); // From centreline: 2.28m
+      });
+
+      test('should have correct leg 2->3 with exact distance', () => {
+        const leg2to3 = parseResult.legs.find((l: any) => 
+          l.fromStation === 'coincidence.coincidence_ent.2' && 
+          l.toStation === 'coincidence.coincidence_ent.3'
+        );
+        expect(leg2to3).toBeDefined();
+        
+        const distance = Math.sqrt(
+          Math.pow(leg2to3.toX - leg2to3.fromX, 2) +
+          Math.pow(leg2to3.toY - leg2to3.fromY, 2) +
+          Math.pow(leg2to3.toZ - leg2to3.fromZ, 2)
+        );
+        expect(distance).toBeCloseTo(1.51, 2); // From centreline: 1.51m
+      });
+
+      test('should have correct leg 3->4 with exact distance', () => {
+        const leg3to4 = parseResult.legs.find((l: any) => 
+          l.fromStation === 'coincidence.coincidence_ent.3' && 
+          l.toStation === 'coincidence.coincidence_ent.4'
+        );
+        expect(leg3to4).toBeDefined();
+        
+        const distance = Math.sqrt(
+          Math.pow(leg3to4.toX - leg3to4.fromX, 2) +
+          Math.pow(leg3to4.toY - leg3to4.fromY, 2) +
+          Math.pow(leg3to4.toZ - leg3to4.fromZ, 2)
+        );
+        expect(distance).toBeCloseTo(5.96, 2); // From centreline: 5.96m
+      });
+
+      test('should have correct leg 4->5 with exact distance', () => {
+        const leg4to5 = parseResult.legs.find((l: any) => 
+          l.fromStation === 'coincidence.coincidence_ent.4' && 
+          l.toStation === 'coincidence.coincidence_ent.5'
+        );
+        expect(leg4to5).toBeDefined();
+        
+        const distance = Math.sqrt(
+          Math.pow(leg4to5.toX - leg4to5.fromX, 2) +
+          Math.pow(leg4to5.toY - leg4to5.fromY, 2) +
+          Math.pow(leg4to5.toZ - leg4to5.fromZ, 2)
+        );
+        expect(distance).toBeCloseTo(3.83, 2); // From centreline: 3.83m
+      });
+    });
+
+    describe('Splay validation', () => {
+      test('should have splays from main stations', () => {
+        // Find splays (legs that don't connect to named stations)
+        const splays = parseResult.legs.filter((l: any) => 
+          l.fromStation === '' || l.toStation === ''
+        );
+        
+        // Should have some splays
+        expect(splays.length).toBeGreaterThan(0);
+        
+        // All splays should have at least one end connected to a named station
+        splays.forEach((splay: any) => {
+          const hasNamedEnd = splay.fromStation !== '' || splay.toStation !== '';
+          expect(hasNamedEnd).toBe(true);
+        });
+      });
+
+      test('should have splays with reasonable distances', () => {
+        const splays = parseResult.legs.filter((l: any) => 
+          l.fromStation === '' || l.toStation === ''
+        );
+        
+        splays.forEach((splay: any) => {
+          const distance = Math.sqrt(
+            Math.pow(splay.toX - splay.fromX, 2) +
+            Math.pow(splay.toY - splay.fromY, 2) +
+            Math.pow(splay.toZ - splay.fromZ, 2)
+          );
+          
+          // Splay distances should be reasonable (not too long, not zero)
+          expect(distance).toBeGreaterThan(0.01); // At least 1cm
+          expect(distance).toBeLessThan(50); // Not more than 50m
+        });
+      });
+    });
+
+    describe('Coordinate system validation', () => {
+      test('should have reasonable coordinate bounds', () => {
+        const bounds = parseResult.bounds;
+        
+        // Coordinates should be in reasonable ranges (not millions of meters)
+        expect(bounds.maxX - bounds.minX).toBeLessThan(1000); // Survey should be less than 1km wide
+        expect(bounds.maxY - bounds.minY).toBeLessThan(1000); // Survey should be less than 1km deep
+        expect(bounds.maxZ - bounds.minZ).toBeLessThan(500);  // Survey should be less than 500m high
+      });
+
+      test('should have stations with reasonable coordinates', () => {
+        parseResult.stations.forEach((station: any) => {
+          // Coordinates should not be in millions
+          expect(station.x).toBeGreaterThan(-1000);
+          expect(station.x).toBeLessThan(1000);
+          expect(station.y).toBeGreaterThan(-1000);
+          expect(station.y).toBeLessThan(1000);
+          expect(station.z).toBeGreaterThan(-1000);
+          expect(station.z).toBeLessThan(1000);
+        });
+      });
+
+      test('should have legs with reasonable coordinates', () => {
+        parseResult.legs.forEach((leg: any) => {
+          // All coordinates should be reasonable
+          [leg.fromX, leg.fromY, leg.fromZ, leg.toX, leg.toY, leg.toZ].forEach(coord => {
+            expect(coord).toBeGreaterThan(-1000);
+            expect(coord).toBeLessThan(1000);
+          });
+        });
+      });
+    });
+
+    describe('Header validation', () => {
+      test('should have correct file header', () => {
+        expect(parseResult.header.fileId).toBe('Survex 3D Image File');
+        expect(parseResult.header.version).toBe('v8');
+        expect(parseResult.header.title).toContain('coincidence');
+        expect(parseResult.header.separator).toBe('.');
+        expect(parseResult.header.timestamp).toBeInstanceOf(Date);
+        expect(typeof parseResult.header.flags).toBe('number');
+      });
+    });
+
+    describe('Data integrity validation', () => {
+      test('should have no duplicate station names', () => {
+        const stationNames = parseResult.stations.map((s: any) => s.name);
+        const uniqueNames = new Set(stationNames);
+        expect(uniqueNames.size).toBe(stationNames.length);
+      });
+
+      test('should have no zero-length legs', () => {
+        const zeroLengthLegs = parseResult.legs.filter((leg: any) => {
+          const distance = Math.sqrt(
+            Math.pow(leg.toX - leg.fromX, 2) +
+            Math.pow(leg.toY - leg.fromY, 2) +
+            Math.pow(leg.toZ - leg.fromZ, 2)
+          );
+          return distance < 0.001; // Less than 1mm
+        });
+        expect(zeroLengthLegs).toHaveLength(0);
+      });
+
+      test('should have consistent station coordinates', () => {
+        // Check that stations referenced in legs have matching coordinates
+        const stationMap = new Map();
+        parseResult.stations.forEach((s: any) => {
+          stationMap.set(s.name, s);
+        });
+
+        parseResult.legs.forEach((leg: any) => {
+          if (leg.fromStation && stationMap.has(leg.fromStation)) {
+            const station = stationMap.get(leg.fromStation);
+            expect(leg.fromX).toBeCloseTo(station.x, 6);
+            expect(leg.fromY).toBeCloseTo(station.y, 6);
+            expect(leg.fromZ).toBeCloseTo(station.z, 6);
+          }
+          
+          if (leg.toStation && stationMap.has(leg.toStation)) {
+            const station = stationMap.get(leg.toStation);
+            expect(leg.toX).toBeCloseTo(station.x, 6);
+            expect(leg.toY).toBeCloseTo(station.y, 6);
+            expect(leg.toZ).toBeCloseTo(station.z, 6);
+          }
+        });
+      });
+    });
+
+    describe('Survey structure validation', () => {
+      test('should have a connected survey network', () => {
+        // Check that stations are connected in a network
+        const connectedStations = new Set();
+        
+        // Start with first station
+        if (parseResult.stations.length > 0) {
+          connectedStations.add(parseResult.stations[0].name);
+        }
+        
+        // Add stations connected by legs
+        parseResult.legs.forEach((leg: any) => {
+          if (leg.fromStation) connectedStations.add(leg.fromStation);
+          if (leg.toStation) connectedStations.add(leg.toStation);
+        });
+        
+        // Should have at least some connected stations
+        expect(connectedStations.size).toBeGreaterThan(0);
+      });
+
+      test('should have main survey stations in sequence', () => {
+        // Check that main survey stations (0-46) are present and connected
+        for (let i = 0; i < 46; i++) {
+          const stationName = `coincidence.coincidence_ent.${i}`;
+          const nextStationName = `coincidence.coincidence_ent.${i + 1}`;
+          
+          const station = parseResult.stations.find((s: any) => s.name === stationName);
+          const nextStation = parseResult.stations.find((s: any) => s.name === nextStationName);
+          
+          expect(station).toBeDefined();
+          expect(nextStation).toBeDefined();
+          
+          // Should have a leg connecting them
+          const connectingLeg = parseResult.legs.find((l: any) => 
+            l.fromStation === stationName && l.toStation === nextStationName
+          );
+          expect(connectingLeg).toBeDefined();
+        }
+      });
+    });
+
+    describe('Debug leg analysis', () => {
+      test('should analyze what legs are actually created', () => {
+        console.log('=== LEG ANALYSIS ===');
+        console.log('Total legs:', parseResult.legs.length);
+        
+        // Show first 10 legs
+        console.log('First 10 legs:');
+        parseResult.legs.slice(0, 10).forEach((leg: any, i: number) => {
+          console.log(`${i}: ${leg.fromStation} -> ${leg.toStation} (${leg.fromX.toFixed(2)},${leg.fromY.toFixed(2)},${leg.fromZ.toFixed(2)}) -> (${leg.toX.toFixed(2)},${leg.toY.toFixed(2)},${leg.toZ.toFixed(2)})`);
+        });
+        
+        // Find legs with coincidence_ent stations
+        const coincidenceLegs = parseResult.legs.filter((leg: any) => 
+          leg.fromStation.includes('coincidence_ent') || leg.toStation.includes('coincidence_ent')
+        );
+        console.log('Legs with coincidence_ent stations:', coincidenceLegs.length);
+        
+        // Show first 10 coincidence legs
+        console.log('First 10 coincidence_ent legs:');
+        coincidenceLegs.slice(0, 10).forEach((leg: any, i: number) => {
+          console.log(`${i}: ${leg.fromStation} -> ${leg.toStation}`);
+        });
+        
+        // Check for specific leg 0->1
+        const leg0to1 = parseResult.legs.find((l: any) => 
+          l.fromStation === 'coincidence.coincidence_ent.0' && 
+          l.toStation === 'coincidence.coincidence_ent.1'
+        );
+        console.log('Leg 0->1 found:', !!leg0to1);
+        
+        // Check for any legs from station 0
+        const legsFrom0 = parseResult.legs.filter((l: any) => 
+          l.fromStation === 'coincidence.coincidence_ent.0'
+        );
+        console.log('Legs from station 0:', legsFrom0.length);
+        legsFrom0.forEach((leg: any, i: number) => {
+          console.log(`  ${i}: -> ${leg.toStation}`);
+        });
+        
+        // Check for any legs to station 1
+        const legsTo1 = parseResult.legs.filter((l: any) => 
+          l.toStation === 'coincidence.coincidence_ent.1'
+        );
+        console.log('Legs to station 1:', legsTo1.length);
+        legsTo1.forEach((leg: any, i: number) => {
+          console.log(`  ${i}: ${leg.fromStation} ->`);
+        });
+      });
+    });
+  });
 });
 
 // Helper function to parse centreline data

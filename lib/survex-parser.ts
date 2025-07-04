@@ -9,6 +9,7 @@ export class SurvexParser {
   private legs: SurvexLeg[] = [];
   private lastStationLabel: string | null = null;
   private lastStationPoint: SurvexPoint | null = null;
+  private pendingLeg: SurvexLeg | null = null;
 
   constructor(data: Uint8Array) {
     this.data = data;
@@ -22,6 +23,7 @@ export class SurvexParser {
     this.legs = [];
     this.lastStationLabel = null;
     this.lastStationPoint = null;
+    this.pendingLeg = null;
 
     console.log('Survex parse started, file size:', this.data.length);
 
@@ -252,46 +254,55 @@ export class SurvexParser {
   }
 
   private processItem(item: SurvexItem): void {
-    switch (item.type) {
-      case SurvexItemType.MOVE:
-        if (item.point) {
-          this.currentPoint = { ...item.point };
-          // MOVE does not create a leg or update last station
-        }
-        break;
-
-      default:
-        // LINE items (0x40-0x7f)
-        if (item.type >= SurvexItemType.LINE_START && item.type <= SurvexItemType.LINE_END) {
-          if (item.point && this.lastStationLabel && this.lastStationPoint) {
-            // Create a leg from last station to new point
-            this.legs.push({
-              fromStation: this.lastStationLabel,
-              toStation: '', // Will be filled if next LABEL
-              fromX: this.lastStationPoint.x,
-              fromY: this.lastStationPoint.y,
-              fromZ: this.lastStationPoint.z,
-              toX: item.point.x,
-              toY: item.point.y,
-              toZ: item.point.z,
-              flags: 0,
-            });
-            this.currentPoint = { ...item.point };
-            // Do not update lastStationLabel/Point until a LABEL is found
-          }
-        }
-        // LABEL items (0x80-0xff)
-        else if (item.type >= SurvexItemType.LABEL_START && item.type <= SurvexItemType.LABEL_END) {
-          if (item.point && item.label) {
-            const safeName = (item.label || '').toString();
-            this.stations.set(safeName, { ...item.point });
-            this.lastStationLabel = safeName;
-            this.lastStationPoint = { ...item.point };
-            this.currentPoint = { ...item.point };
-          }
-        }
-        break;
+    // MOVE: set current position, do not create a leg
+    if (item.type === SurvexItemType.MOVE) {
+      if (item.point) {
+        this.currentPoint = { ...item.point };
+        this.lastStationLabel = null;
+        this.lastStationPoint = null;
+        this.pendingLeg = null;
+        console.log('MOVE: Updated current position to', this.currentPoint);
+      }
     }
+    // LINE: create a leg from current position to new coordinates, update current position
+    else if (item.type >= SurvexItemType.LINE_START && item.type <= SurvexItemType.LINE_END) {
+      if (item.point) {
+        const newLeg: SurvexLeg = {
+          fromStation: this.lastStationLabel || '',
+          toStation: '',
+          fromX: this.currentPoint.x,
+          fromY: this.currentPoint.y,
+          fromZ: this.currentPoint.z,
+          toX: item.point.x,
+          toY: item.point.y,
+          toZ: item.point.z,
+          flags: item.type & 0x3f,
+        };
+        this.legs.push(newLeg);
+        this.pendingLeg = newLeg;
+        this.currentPoint = { ...item.point };
+        this.lastStationLabel = null;
+        this.lastStationPoint = null;
+      }
+    }
+    // LABEL: define a station at the given coordinates
+    else if (item.type >= SurvexItemType.LABEL_START && item.type <= SurvexItemType.LABEL_END) {
+      if (item.point && item.label) {
+        this.stations.set(item.label, item.point);
+        this.lastStationLabel = item.label;
+        this.lastStationPoint = { ...item.point };
+        this.currentPoint = { ...item.point };
+        // If we have a pending leg that ends at this position, update its toStation
+        if (this.pendingLeg &&
+            Math.abs(this.pendingLeg.toX - item.point.x) < 0.001 &&
+            Math.abs(this.pendingLeg.toY - item.point.y) < 0.001 &&
+            Math.abs(this.pendingLeg.toZ - item.point.z) < 0.001) {
+          this.pendingLeg.toStation = item.label;
+          this.pendingLeg = null;
+        }
+      }
+    }
+    // Other item types: skip
   }
 
   private calculateBounds(stations: SurvexStation[]): { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number } {
