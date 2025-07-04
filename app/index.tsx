@@ -7,6 +7,8 @@ import { FileLoaderService } from '@/lib/file-loader';
 
 export default function Index() {
   const [recentFiles, setRecentFiles] = useState<RecentFile[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('Loading...');
 
   const loadRecentFiles = useCallback(async () => {
     const files = await StorageService.getRecentFiles();
@@ -26,14 +28,20 @@ export default function Index() {
 
   const handleOpenFile = async () => {
     try {
+      setIsLoading(true);
+      setLoadingMessage('Opening file picker...');
+      
       const result = await FileLoaderService.pickAndLoadFile();
       
       if (!result.success) {
+        setIsLoading(false);
         if (result.error !== 'File selection cancelled') {
           Alert.alert('Error', result.error || 'Failed to load file');
         }
         return;
       }
+      
+      setLoadingMessage('Loading file...');
       
       if (result.data && result.fileName && result.filePath) {
         // Add to recent files
@@ -58,14 +66,20 @@ export default function Index() {
     } catch (error) {
       console.error('Error opening file:', error);
       Alert.alert('Error', 'Failed to open file');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleOpenRecentFile = async (file: RecentFile) => {
     try {
-      const result = await FileLoaderService.loadSurvexFile(file.path, file.name);
+      setIsLoading(true);
+      setLoadingMessage(`Loading ${file.name}...`);
+      
+      const result = await FileLoaderService.loadSurvexFile(file.path, file.name, file.size);
       
       if (!result.success) {
+        setIsLoading(false);
         Alert.alert('Error', result.error || 'Failed to load recent file');
         return;
       }
@@ -93,6 +107,8 @@ export default function Index() {
     } catch (error) {
       console.error('Error opening recent file:', error);
       Alert.alert('Error', 'Failed to open recent file');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -106,6 +122,8 @@ export default function Index() {
       onOpenSettings={handleOpenSettings}
       onOpenRecentFile={handleOpenRecentFile}
       recentFiles={recentFiles}
+      isLoading={isLoading}
+      loadingMessage={loadingMessage}
     />
   );
 }

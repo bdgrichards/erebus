@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, useColorScheme } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, useColorScheme, ActivityIndicator } from 'react-native';
 import { Colors } from '@/constants/Colors';
 import { Ionicons } from '@expo/vector-icons';
 import { RecentFile } from '@/lib/storage';
@@ -9,9 +9,11 @@ interface HomePageProps {
   onOpenSettings: () => void;
   onOpenRecentFile?: (file: RecentFile) => void;
   recentFiles?: RecentFile[];
+  isLoading?: boolean;
+  loadingMessage?: string;
 }
 
-export default function HomePage({ onOpenFile, onOpenSettings, onOpenRecentFile, recentFiles = [] }: HomePageProps) {
+export default function HomePage({ onOpenFile, onOpenSettings, onOpenRecentFile, recentFiles = [], isLoading = false, loadingMessage = 'Loading...' }: HomePageProps) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
 
@@ -95,6 +97,33 @@ export default function HomePage({ onOpenFile, onOpenSettings, onOpenRecentFile,
       fontSize: 18,
       fontWeight: '600',
     },
+    loadingOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.7)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 100,
+    },
+    loadingContent: {
+      backgroundColor: colors.background,
+      padding: 24,
+      borderRadius: 12,
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4,
+      elevation: 5,
+    },
+    loadingText: {
+      marginTop: 12,
+      fontSize: 16,
+      color: colors.text,
+    },
   });
 
   const formatDate = (date: Date) => {
@@ -115,7 +144,7 @@ export default function HomePage({ onOpenFile, onOpenSettings, onOpenRecentFile,
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Erebus</Text>
-        <TouchableOpacity style={styles.settingsButton} onPress={onOpenSettings}>
+        <TouchableOpacity style={styles.settingsButton} onPress={onOpenSettings} disabled={isLoading}>
           <Ionicons name="settings-outline" size={24} color={colors.text} />
         </TouchableOpacity>
       </View>
@@ -136,6 +165,7 @@ export default function HomePage({ onOpenFile, onOpenSettings, onOpenRecentFile,
                   key={file.id} 
                   style={styles.recentItem}
                   onPress={() => onOpenRecentFile?.(file)}
+                  disabled={isLoading}
                 >
                   <Text style={styles.recentFileName}>{file.name}</Text>
                   <Text style={styles.recentFileDate}>{formatDate(file.lastOpened)}</Text>
@@ -146,9 +176,18 @@ export default function HomePage({ onOpenFile, onOpenSettings, onOpenRecentFile,
         </View>
       </View>
 
-      <TouchableOpacity style={styles.openButton} onPress={onOpenFile}>
+      <TouchableOpacity style={styles.openButton} onPress={onOpenFile} disabled={isLoading}>
         <Text style={styles.openButtonText}>Open New File</Text>
       </TouchableOpacity>
+
+      {isLoading && (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingContent}>
+            <ActivityIndicator size="large" color={colors.tint} />
+            <Text style={styles.loadingText}>{loadingMessage}</Text>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
