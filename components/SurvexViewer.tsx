@@ -10,9 +10,14 @@ import { ThemedView } from "./ThemedView";
 interface SurvexViewerProps {
   data?: SurvexData;
   style?: any;
+  showViewingAngles?: boolean;
 }
 
-export default function SurvexViewer({ data, style }: SurvexViewerProps) {
+export default function SurvexViewer({
+  data,
+  style,
+  showViewingAngles = true,
+}: SurvexViewerProps) {
   const [error, setError] = useState<string | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -344,45 +349,49 @@ export default function SurvexViewer({ data, style }: SurvexViewerProps) {
           <View style={styles.touchOverlay} {...panResponder.panHandlers} />
         </View>
       )}
-      {data && (
+      {data && showViewingAngles && (
         <View style={styles.indicatorsOverlay}>
-          <View style={styles.compassIndicator}>
-            <Text style={styles.indicatorLabel}>Compass</Text>
-            <Text style={styles.indicatorValue}>{compassHeading}°</Text>
-            <Text style={styles.indicatorDirection}>
-              {compassHeading >= 337.5 || compassHeading < 22.5
-                ? "N"
-                : compassHeading >= 22.5 && compassHeading < 67.5
-                ? "NE"
-                : compassHeading >= 67.5 && compassHeading < 112.5
-                ? "E"
-                : compassHeading >= 112.5 && compassHeading < 157.5
-                ? "SE"
-                : compassHeading >= 157.5 && compassHeading < 202.5
-                ? "S"
-                : compassHeading >= 202.5 && compassHeading < 247.5
-                ? "SW"
-                : compassHeading >= 247.5 && compassHeading < 292.5
-                ? "W"
-                : "NW"}
-            </Text>
-          </View>
+          {showViewingAngles && (
+            <View style={styles.compassIndicator}>
+              <Text style={styles.indicatorLabel}>Compass</Text>
+              <Text style={styles.indicatorValue}>{compassHeading}°</Text>
+              <Text style={styles.indicatorDirection}>
+                {compassHeading >= 337.5 || compassHeading < 22.5
+                  ? "N"
+                  : compassHeading >= 22.5 && compassHeading < 67.5
+                  ? "NE"
+                  : compassHeading >= 67.5 && compassHeading < 112.5
+                  ? "E"
+                  : compassHeading >= 112.5 && compassHeading < 157.5
+                  ? "SE"
+                  : compassHeading >= 157.5 && compassHeading < 202.5
+                  ? "S"
+                  : compassHeading >= 202.5 && compassHeading < 247.5
+                  ? "SW"
+                  : compassHeading >= 247.5 && compassHeading < 292.5
+                  ? "W"
+                  : "NW"}
+              </Text>
+            </View>
+          )}
 
-          <View style={styles.tiltIndicator}>
-            <Text style={styles.indicatorLabel}>Tilt</Text>
-            <Text style={styles.indicatorValue}>{tiltAngle}°</Text>
-            <Text style={styles.indicatorDirection}>
-              {tiltAngle > 60
-                ? "Down"
-                : tiltAngle > 30
-                ? "Down-Angled"
-                : tiltAngle > -30
-                ? "Horizontal"
-                : tiltAngle > -60
-                ? "Up-Angled"
-                : "Up"}
-            </Text>
-          </View>
+          {showViewingAngles && (
+            <View style={styles.tiltIndicator}>
+              <Text style={styles.indicatorLabel}>Tilt</Text>
+              <Text style={styles.indicatorValue}>{tiltAngle}°</Text>
+              <Text style={styles.indicatorDirection}>
+                {tiltAngle > 60
+                  ? "Down"
+                  : tiltAngle > 30
+                  ? "Down-Angled"
+                  : tiltAngle > -30
+                  ? "Horizontal"
+                  : tiltAngle > -60
+                  ? "Up-Angled"
+                  : "Up"}
+              </Text>
+            </View>
+          )}
         </View>
       )}
     </View>

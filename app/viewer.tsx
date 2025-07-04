@@ -1,3 +1,4 @@
+import SettingsModal from "@/components/SettingsModal";
 import SurvexViewer from "@/components/SurvexViewer";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
@@ -5,11 +6,13 @@ import { SurvexData } from "@/lib/survex-types";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React from "react";
+import React, { useState } from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 
 export default function Viewer() {
   const params = useLocalSearchParams();
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const [showViewingAngles, setShowViewingAngles] = useState(true);
 
   // Parse survex data from params
   let survexData: SurvexData | undefined;
@@ -26,7 +29,7 @@ export default function Viewer() {
   };
 
   const handleSettings = () => {
-    // TODO: Implement settings
+    setSettingsVisible(true);
   };
 
   return (
@@ -63,8 +66,14 @@ export default function Viewer() {
         </ThemedView>
       )}
       <View style={styles.content}>
-        <SurvexViewer data={survexData} />
+        <SurvexViewer data={survexData} showViewingAngles={showViewingAngles} />
       </View>
+      <SettingsModal
+        visible={settingsVisible}
+        onClose={() => setSettingsVisible(false)}
+        showViewingAngles={showViewingAngles}
+        onToggleViewingAngles={setShowViewingAngles}
+      />
     </View>
   );
 }
