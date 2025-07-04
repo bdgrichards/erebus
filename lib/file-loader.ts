@@ -30,6 +30,12 @@ export const FileLoaderService = {
       const file = result.assets[0];
       console.log(`FileLoader: File selected: ${file.name} (${file.size} bytes)`);
       
+      // Validate file extension
+      if (!file.name.toLowerCase().endsWith('.3d')) {
+        console.log('FileLoader: Invalid file type - not a .3d file');
+        return { success: false, error: 'Please select a Survex .3d file' };
+      }
+      
       return await this.loadSurvexFile(file.uri, file.name, file.size);
     } catch (err) {
       console.error('FileLoader: File picker error:', err);
@@ -40,6 +46,12 @@ export const FileLoaderService = {
   async loadSurvexFile(fileUri: string, fileName: string, fileSize?: number): Promise<FileLoadResult> {
     try {
       console.log(`FileLoader: Reading file: ${fileName}`);
+      
+      // Validate file extension
+      if (!fileName.toLowerCase().endsWith('.3d')) {
+        console.log('FileLoader: Invalid file type - not a .3d file');
+        return { success: false, error: 'Please select a Survex .3d file' };
+      }
       
       const fileContent = await FileSystem.readAsStringAsync(fileUri, {
         encoding: FileSystem.EncodingType.Base64,
