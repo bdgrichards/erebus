@@ -30,6 +30,9 @@ export class SurvexParser {
     const header = this.parseHeader();
     this.parseItems();
     
+    // Final step: retroactively assign station names to legs based on coordinate matching
+    this.assignStationNamesToLegs();
+    
     const stationArray = Array.from(this.stations.entries()).map(([name, point]) => ({
       name,
       x: point.x,
@@ -198,9 +201,8 @@ export class SurvexParser {
     
     // Parse label modification (unless flag bit 0x20 is set)
     const flags = itemType & 0x3f;
-    let label = '';
     if ((flags & 0x20) === 0) {
-      label = this.parseLabelModification();
+      this.parseLabelModification(); // This updates the label buffer
     } else {
       console.log('Line parsing: no label change (flag 0x20 set)');
     }
@@ -214,6 +216,9 @@ export class SurvexParser {
     const x = xRaw / 100;
     const y = yRaw / 100;
     const z = zRaw / 100;
+    
+    // Use the current label buffer value
+    const label = this.labelBuffer;
     
     console.log('Line parsing: coordinates =', { x, y, z }, 'label =', JSON.stringify(label));
     
@@ -231,8 +236,8 @@ export class SurvexParser {
     
     console.log('Label parsing: item type = 0x' + itemType.toString(16));
     
-    // Parse label modification
-    const label = this.parseLabelModification();
+    // Parse label modification (this updates the label buffer)
+    this.parseLabelModification();
     
     // Parse coordinates (in centimeters)
     const xRaw = this.readInt32();
@@ -243,6 +248,9 @@ export class SurvexParser {
     const x = xRaw / 100;
     const y = yRaw / 100;
     const z = zRaw / 100;
+    
+    // Use the current label buffer as the station name
+    const label = this.labelBuffer;
     
     console.log('Label parsing: coordinates =', { x, y, z }, 'label =', JSON.stringify(label));
     
@@ -258,17 +266,16 @@ export class SurvexParser {
     if (item.type === SurvexItemType.MOVE) {
       if (item.point) {
         this.currentPoint = { ...item.point };
-        this.lastStationLabel = null;
-        this.lastStationPoint = null;
+        // Don't clear label buffer on MOVE - it should persist
         this.pendingLeg = null;
-        console.log('MOVE: Updated current position to', this.currentPoint);
+        console.log('MOVE: Updated current position to', this.currentPoint, 'label buffer:', this.labelBuffer);
       }
     }
     // LINE: create a leg from current position to new coordinates, update current position
     else if (item.type >= SurvexItemType.LINE_START && item.type <= SurvexItemType.LINE_END) {
       if (item.point) {
         const newLeg: SurvexLeg = {
-          fromStation: this.lastStationLabel || '',
+          fromStation: this.labelBuffer || '', // Use current label buffer as fromStation
           toStation: '',
           fromX: this.currentPoint.x,
           fromY: this.currentPoint.y,
@@ -281,18 +288,18 @@ export class SurvexParser {
         this.legs.push(newLeg);
         this.pendingLeg = newLeg;
         this.currentPoint = { ...item.point };
-        // Clear the last station label after using it for the leg
-        this.lastStationLabel = null;
-        console.log('LINE: Created leg from', newLeg.fromStation || '(unnamed)', 'to new position', item.point);
+        // Don't clear label buffer - it should persist for next leg
+        console.log('LINE: Created leg from', newLeg.fromStation || '(unnamed)', 'to new position', item.point, 'label buffer:', this.labelBuffer);
       }
     }
-    // LABEL: define a station at the current position and update the current station label
+    // LABEL: define a station at the current position and update the label buffer
     else if (item.type >= SurvexItemType.LABEL_START && item.type <= SurvexItemType.LABEL_END) {
       if (item.point && item.label) {
         this.stations.set(item.label, item.point);
-        this.lastStationLabel = item.label;
-        this.lastStationPoint = { ...item.point };
         this.currentPoint = { ...item.point };
+        
+        // Update the label buffer with the new station name
+        this.labelBuffer = item.label;
         
         // Retroactively assign station names to legs that end at this position
         // Look through recent legs (last 10) to find matches
@@ -319,6 +326,8 @@ export class SurvexParser {
             console.log('LABEL: Retroactively assigned', item.label, 'as fromStation to leg', i);
           }
         }
+        
+        console.log('LABEL: Defined station', item.label, 'at', item.point, 'label buffer updated to:', this.labelBuffer);
       }
     }
     // Other item types: skip
@@ -740,5 +749,45 @@ export class SurvexParser {
     
     console.log('Label modification: delete =', deleteCount, 'append =', appendCount, 'buffer =', JSON.stringify(this.labelBuffer));
     return this.labelBuffer;
+  }
+
+  private assignStationNamesToLegs(): void {
+    console.log('Final step: Assigning station names to legs based on coordinate matching');
+    
+    // Create a map of station coordinates to station names
+    const stationMap = new Map<string, string>();
+    for (const [name, point] of this.stations.entries()) {
+      const key = `${point.x.toFixed(6)},${point.y.toFixed(6)},${point.z.toFixed(6)}`;
+      stationMap.set(key, name);
+    }
+    
+    let assignedCount = 0;
+    
+    // Go through all legs and assign station names based on coordinate matching
+    for (let i = 0; i < this.legs.length; i++) {
+      const leg = this.legs[i];
+      
+      // Check fromStation
+      if (leg.fromStation === '') {
+        const fromKey = `${leg.fromX.toFixed(6)},${leg.fromY.toFixed(6)},${leg.fromZ.toFixed(6)}`;
+        const fromStation = stationMap.get(fromKey);
+        if (fromStation) {
+          leg.fromStation = fromStation;
+          assignedCount++;
+        }
+      }
+      
+      // Check toStation
+      if (leg.toStation === '') {
+        const toKey = `${leg.toX.toFixed(6)},${leg.toY.toFixed(6)},${leg.toZ.toFixed(6)}`;
+        const toStation = stationMap.get(toKey);
+        if (toStation) {
+          leg.toStation = toStation;
+          assignedCount++;
+        }
+      }
+    }
+    
+    console.log(`Final step: Assigned ${assignedCount} station names to legs`);
   }
 }
